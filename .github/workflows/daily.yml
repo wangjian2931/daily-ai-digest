@@ -1,0 +1,28 @@
+name: Daily AI Digest
+
+on:
+  schedule:
+    # UTC 0:00 ≈ 北京时间 8:00
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+jobs:
+  generate-and-send:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate and publish digest
+        env:
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          BUTTONDOWN_API_KEY: ${{ secrets.BUTTONDOWN_API_KEY }}
+          SEND_MODE: send
+          DEEPSEEK_MODEL: deepseek-chat
+        run: python scripts/generate_digest.py

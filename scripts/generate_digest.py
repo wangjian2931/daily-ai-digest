@@ -1,0 +1,189 @@
+#!/usr/bin/env python3
+"""抓取 RSS → DeepSeek 总结 → Buttondown 发送/草稿。"""
+
+from __future__ import annotations
+
+import os
+import sys
+from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
+from pathlib import Path
+
+import feedparser
+import requests
+import yaml
+from openai import OpenAI
+
+ROOT = Path(__file__).resolve().parent.parent
+CONFIG_PATH = ROOT / "config" / "sources.yaml"
+OUTPUT_DIR = ROOT / "output"
+
+SYSTEM_PROMPT = """你是科技新闻编辑。根据给定英文/中文资讯，写一份中文「每日 AI 动态」邮件正文。
+
+要求：
+1. 使用 Markdown
+2. 开头一级标题：# 每日 AI 动态 | YYYY-MM-DD
+3. 包含「## 今日要点」3 条 bullet
+4. 包含「## 详细动态」，每条含标题、1-2 句摘要、原文链接
+5. 去重、合并同类话题，忽略明显重复
+6. 语气简洁专业，不要编造链接或事实
+7. 结尾一行：---\\n由 DeepSeek 自动整理
+"""
+
+
+def load_config() -> dict:
+    with CONFIG_PATH.open(encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
+def parse_entry_time(entry: feedparser.FeedParserDict) -> datetime | None:
+    for key in ("published_parsed", "updated_parsed"):
+        parsed = entry.get(key)
+        if parsed:
+            return datetime(*parsed[:6], tzinfo=timezone.utc)
+    for key in ("published", "updated"):
+        raw = entry.get(key)
+        if raw:
+            try:
+                dt = parsedate_to_datetime(raw)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt.astimezone(timezone.utc)
+            except (TypeError, ValueError):
+                continue
+    return None
+
+
+def fetch_items(config: dict) -> list[dict]:
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=config.get("max_age_hours", 48))
+    per_feed = config.get("max_items_per_feed", 8)
+    items: list[dict] = []
+
+    for feed in config.get("feeds", []):
+        name = feed.get("name", "Unknown")
+        url = feed["url"]
+        parsed = feedparser.parse(url)
+        count = 0
+        for entry in parsed.entries:
+            if count >= per_feed:
+                break
+            published = parse_entry_time(entry)
+            if published and published < cutoff:
+                continue
+            link = entry.get("link", "")
+            title = (entry.get("title") or "").strip()
+            if not title or not link:
+                continue
+            summary = (entry.get("summary") or entry.get("description") or "").strip()
+            if len(summary) > 500:
+                summary = summary[:500] + "..."
+            items.append(
+                {
+                    "source": name,
+                    "title": title,
+                    "link": link,
+                    "summary": summary,
+                    "published": published.isoformat() if published else "",
+                }
+            )
+            count += 1
+
+    return items
+
+
+def build_raw_digest(items: list[dict]) -> str:
+    lines = []
+    for i, item in enumerate(items, 1):
+        lines.append(f"[{i}] 来源: {item['source']}")
+        lines.append(f"标题: {item['title']}")
+        lines.append(f"链接: {item['link']}")
+        if item["summary"]:
+            lines.append(f"摘要: {item['summary']}")
+        if item["published"]:
+            lines.append(f"时间: {item['published']}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def summarize_with_deepseek(raw_text: str, today: str) -> str:
+    api_key = os.environ.get("DEEPSEEK_API_KEY")
+    if not api_key:
+        raise RuntimeError("缺少环境变量 DEEPSEEK_API_KEY")
+
+    client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
+    response = client.chat.completions.create(
+        model=os.environ.get("DEEPSEEK_MODEL", "deepseek-chat"),
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": f"今天是 {today}。请根据以下资讯生成邮件正文：\n\n{raw_text}",
+            },
+        ],
+        temperature=0.3,
+    )
+    return response.choices[0].message.content.strip()
+
+
+def send_to_buttondown(subject: str, body: str, send_mode: str) -> dict:
+    api_key = os.environ.get("BUTTONDOWN_API_KEY")
+    if not api_key:
+        raise RuntimeError("缺少环境变量 BUTTONDOWN_API_KEY")
+
+    status = "about_to_send" if send_mode == "send" else "draft"
+    headers = {
+        "Authorization": f"Token {api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "subject": subject,
+        "body": body,
+        "status": status,
+    }
+
+    resp = requests.post(
+        "https://api.buttondown.com/v1/emails",
+        headers=headers,
+        json=payload,
+        timeout=60,
+    )
+    if resp.status_code >= 400:
+        raise RuntimeError(f"Buttondown API 失败 ({resp.status_code}): {resp.text}")
+    return resp.json()
+
+
+def main() -> int:
+    config = load_config()
+    items = fetch_items(config)
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    if not items:
+        print("最近没有抓到新资讯，跳过发送。")
+        return 0
+
+    raw_text = build_raw_digest(items)
+    print(f"已抓取 {len(items)} 条资讯，正在调用 DeepSeek...")
+
+    body = summarize_with_deepseek(raw_text, today)
+    subject = f"每日 AI 动态 · {today}"
+
+    OUTPUT_DIR.mkdir(exist_ok=True)
+    out_file = OUTPUT_DIR / f"digest-{today}.md"
+    out_file.write_text(body, encoding="utf-8")
+    print(f"已保存本地副本: {out_file}")
+
+    send_mode = os.environ.get("SEND_MODE", "draft").lower()
+    result = send_to_buttondown(subject, body, send_mode)
+    print(f"Buttondown 状态: {result.get('status')} | ID: {result.get('id')}")
+    if result.get("absolute_url"):
+        print(f"预览/归档: {result['absolute_url']}")
+
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except Exception as exc:
+        print(f"错误: {exc}", file=sys.stderr)
+        raise SystemExit(1)

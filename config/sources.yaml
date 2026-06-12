@@ -1,0 +1,14 @@
+# AI 相关 RSS 信息源（可在 GitHub 上直接修改）
+feeds:
+  - name: TechCrunch AI
+    url: https://techcrunch.com/category/artificial-intelligence/feed/
+  - name: MIT Technology Review AI
+    url: https://www.technologyreview.com/topic/artificial-intelligence/feed/
+  - name: Hacker News (AI/LLM)
+    url: https://hnrss.org/newest?q=AI+OR+LLM+OR+GPT+OR+Claude+OR+DeepSeek
+
+# 只保留最近 N 小时内发布的条目
+max_age_hours: 48
+
+# 每个源最多取几条（避免 token 过多）
+max_items_per_feed: 8
