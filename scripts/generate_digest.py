@@ -135,6 +135,8 @@ def send_to_buttondown(subject: str, body: str, send_mode: str) -> dict:
         "Authorization": f"Token {api_key}",
         "Content-Type": "application/json",
     }
+    if send_mode == "send":
+        headers["X-Buttondown-Live-Dangerously"] = "true"
     payload = {
         "subject": subject,
         "body": body,
@@ -152,7 +154,21 @@ def send_to_buttondown(subject: str, body: str, send_mode: str) -> dict:
     return resp.json()
 
 
+def validate_secrets() -> None:
+    missing = []
+    for name in ("DEEPSEEK_API_KEY", "BUTTONDOWN_API_KEY"):
+        value = os.environ.get(name, "").strip()
+        if not value or "你的" in value or value.startswith("sk-你的"):
+            missing.append(name)
+    if missing:
+        raise RuntimeError(
+            "以下 Secret 未配置或仍是占位符，请到 GitHub Settings → Secrets 填写真实 Key："
+            + ", ".join(missing)
+        )
+
+
 def main() -> int:
+    validate_secrets()
     config = load_config()
     items = fetch_items(config)
     today = datetime.now().strftime("%Y-%m-%d")

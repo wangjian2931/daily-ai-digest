@@ -23,6 +23,6 @@ jobs:
         env:
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           BUTTONDOWN_API_KEY: ${{ secrets.BUTTONDOWN_API_KEY }}
-          SEND_MODE: send
+          SEND_MODE: draft
           DEEPSEEK_MODEL: deepseek-chat
         run: python scripts/generate_digest.py
