@@ -20,9 +20,9 @@ OUTPUT_DIR = ROOT / "output"
 sys.path.insert(0, str(ROOT / "scripts"))
 from publish_site import publish_site_pages  # noqa: E402
 
-DIGEST_TITLE = "国际物流每日动态"
+DIGEST_TITLE = "全球物流每日动态"
 
-SYSTEM_PROMPT = f"""你是国际物流行业编辑。根据给定英文/中文资讯，写一份中文「{DIGEST_TITLE}」邮件正文。
+SYSTEM_PROMPT = f"""你是全球物流行业编辑。根据给定英文/中文资讯，写一份中文「{DIGEST_TITLE}」邮件正文。
 
 行业范围（必须遵守）：
 1. 国际货代行业：货运代理、海运/空运/铁路/多式联运、报关清关、港口与航线、运价与舱位、3PL 等
