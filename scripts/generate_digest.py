@@ -14,24 +14,30 @@ import requests
 import yaml
 from openai import OpenAI
 
-from publish_site import publish_site_pages  # noqa: E402
-
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = ROOT / "config" / "sources.yaml"
 OUTPUT_DIR = ROOT / "output"
 sys.path.insert(0, str(ROOT / "scripts"))
 from publish_site import publish_site_pages  # noqa: E402
 
-SYSTEM_PROMPT = """你是科技新闻编辑。根据给定英文/中文资讯，写一份中文「每日 AI 动态」邮件正文。
+DIGEST_TITLE = "国际物流每日动态"
+
+SYSTEM_PROMPT = f"""你是国际物流行业编辑。根据给定英文/中文资讯，写一份中文「{DIGEST_TITLE}」邮件正文。
+
+行业范围（必须遵守）：
+1. 国际货代行业：货运代理、海运/空运/铁路/多式联运、报关清关、港口与航线、运价与舱位、3PL 等
+2. 国际工程物流(EPC)行业：海外工程项目物流、重大件/超限运输、项目供应链、EPC 承包商物流、能源/基建项目运输等
 
 要求：
 1. 使用 Markdown
-2. 开头一级标题：# 每日 AI 动态 | YYYY-MM-DD
-3. 包含「## 今日要点」3 条 bullet
-4. 包含「## 详细动态」，每条含标题、1-2 句摘要、原文链接
-5. 去重、合并同类话题，忽略明显重复
-6. 语气简洁专业，不要编造链接或事实
-7. 结尾一行：---\\n由 DeepSeek 自动整理
+2. 开头一级标题：# {DIGEST_TITLE} | YYYY-MM-DD
+3. 「## 今日要点」3 条 bullet（跨货代与 EPC 的高价值信息）
+4. 「## 国际货代动态」：相关条目，每条含标题、1-2 句中文摘要、原文链接
+5. 「## 国际工程物流(EPC)动态」：相关条目；若当日无 EPC 新闻，写「今日暂无显著 EPC 相关报道」
+6. 优先选用与跨境运输、货代、工程项目物流相关的资讯；忽略与主题无关的 AI/科技/消费类内容
+7. 去重、合并同类话题，不编造链接或事实
+8. 语气简洁专业，面向货代与 EPC 物流从业者
+9. 结尾一行：---\\n由 DeepSeek 自动整理
 """
 
 
@@ -185,7 +191,7 @@ def main() -> int:
     print(f"已抓取 {len(items)} 条资讯，正在调用 DeepSeek...")
 
     body = summarize_with_deepseek(raw_text, today)
-    subject = f"每日 AI 动态 · {today}"
+    subject = f"{DIGEST_TITLE} · {today}"
 
     OUTPUT_DIR.mkdir(exist_ok=True)
     out_file = OUTPUT_DIR / f"digest-{today}.md"

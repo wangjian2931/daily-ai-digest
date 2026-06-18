@@ -1,12 +1,10 @@
 # daily-ai-digest
 
-自动抓取 AI 相关 RSS，用 DeepSeek 生成中文日报，通过 Buttondown 发送邮件，并发布 GitHub Pages 落地页（支持微信分享链接卡片 + 页内订阅）。
+自动抓取国际物流 / 货代 / EPC 工程物流资讯，用 DeepSeek 生成中文日报，通过 Buttondown 发送邮件，并发布 GitHub Pages 落地页。
 
-## 微信分享链接（发给好友）
+## 微信分享链接
 
-```
 https://wangjian2931.github.io/daily-ai-digest/
-```
 
 好友在微信里点开即可：
 - 查看今日 AI 动态预览
